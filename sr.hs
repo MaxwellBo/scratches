@@ -87,12 +87,11 @@ validateCreds' username password = (,) <$> validateUsername' username <*> valida
 
 type Context = Int
 
-readFromContext :: Context -> String
+readFromContext :: Context -> (Int, Int)
 readFromContext = do
   x <- (+1)
   y <- (+3)
-  return $ show (x * y)
-
+  return $ (x, y)
 
 --------------------------------------------------------------------------------
 
