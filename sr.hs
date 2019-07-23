@@ -74,6 +74,17 @@ validateCreds' username password = (,) <$> validateUsername' username <*> valida
 
 --------------------------------------------------------------------------------
 
+-- instance Functor ((->) r) where
+--     fmap = (.)
+--
+-- instance Applicative ((->) a) where
+--     pure = const
+--     (<*>) f g x = f x (g x)
+--     liftA2 q f g x = q (f x) (g x)
+--
+-- instance Monad ((->) r) where
+--     f >>= k = \ r -> k (f r) r
+
 type Context = Int
 
 readFromContext :: Context -> String
