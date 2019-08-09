@@ -105,7 +105,7 @@ newtype State s a = State { runState :: s -> (a,s) }
 --   fmap _ Nothing  = Nothing
 
 instance Functor (State s) where
-  fmap f (State h) = State $ \s -> let (a, newState) = (h s) 
+  fmap f (State ma) = State $ \s -> let (a, newState) = (ma s) 
                                        b = f a
                                    in (b, newState)
 

@@ -1,8 +1,32 @@
+def add(x: Int, y: Int) = x + y
+
+// println(add(3, 5))
+
+def addCurried(x: Int)(y: Int) = x + y
+
+// println(addCurried(3)(5))
+
+def add2 = addCurried(2) _
+
+// println(add2(3))
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+def fNoArgs = println("fNoArgs got called")
+
+// fNoArgs
+// fNoArgs
+// fNoArgs
+
+
+///////////////////////////////////////////////////////////////////////////////
+
 implicit val x: String = "up here"
 
-def implicitString(implicit x: String) = x
+def implicitString()(implicit x: String) = x
 
-// println(implicitString)
+// println(implicitString())
 
 ///////////////////////////////////////////////////////////////////////////////
 
