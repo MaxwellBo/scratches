@@ -6,7 +6,7 @@ def addCurried(x: Int)(y: Int) = x + y
 
 // println(addCurried(3)(5))
 
-val add2: Function1[Int, Int]= addCurried(2)
+val add2: Function1[Int, Int] = addCurried(2)
 
 // println(add2(3))
 
@@ -138,6 +138,14 @@ import EncodeSyntax._
 
 case class Person(name: String, age: Int, alive: Boolean)
 
+
+// at this point in type, we break object orientation.
+// We've defined the Encode[Person] _seperate_ (!) from Person.
+// We've seperated behaviour and data.
+//
+// The practical implication of this is that Person could be a 3rd party
+// datatype, and we could still define an Encode instance for it
+
 implicit def encodePerson: Encode[Person] = new Encode[Person] {
     override def encode(person: Person): Json = 
       // we can obviously do this in a macro
@@ -156,7 +164,10 @@ def needsAnEncoder[A](a: A)(implicit instance: Encode[A]) {
   println(a.encode().innerString)
 }
 
+// is syntactically equivalent to
+
 def needsAnEncoderPrime[A: Encode](a: A) {
+  // val instance = implicitly[Encode[A]] // we can still recover the instance
   println(a.encode().innerString)
 }
 
@@ -192,10 +203,8 @@ object FunctorInstances {
   }
 }
 
-
 import FunctorInstances._
 import FunctorSyntax._
-
 
 object FunctorSyntax {
   implicit final class FunctorExtensions[F[_], A](private val self: F[A]) extends AnyVal {
