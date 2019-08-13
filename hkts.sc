@@ -122,9 +122,11 @@ object EncodeInstances {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-implicit class EncodeSyntax[A](private val self: A) extends AnyVal {
-  def encode()(implicit instance: Encode[A]): Json = {
-    instance.encode(self)
+object EncodeSyntax {
+  implicit class EncodeExtensions[A](private val self: A) extends AnyVal {
+    def encode()(implicit instance: Encode[A]): Json = {
+      instance.encode(self)
+    }
   }
 }
 
@@ -176,11 +178,6 @@ trait Functor[F[_]] {
   def fmap[A, B](fa: F[A])(f: A => B): F[B]
 }
 
-object Functor {
-  def fmap[F[_], A, B](fa: F[A], f: A => B)(implicit instance: Functor[F]): F[B] = {
-    instance.fmap(fa)(f)
-  }
-}
 
 object FunctorInstances {
     // @ List(1, 2, 3).map(x => x + 1)
@@ -197,11 +194,8 @@ object FunctorInstances {
 
 
 import FunctorInstances._
+import FunctorSyntax._
 
-println(Functor.fmap(List(1, 2, 3), (x: Int) => x + 1))
-println(Functor.fmap(Foo(1),        (x: Int) => x + 1))
-
-// but what if we want to do Foo(1).map((x: Int) => x + 1)?
 
 object FunctorSyntax {
   implicit final class FunctorExtensions[F[_], A](private val self: F[A]) extends AnyVal {
@@ -211,9 +205,7 @@ object FunctorSyntax {
   }
 }
 
-import FunctorSyntax._
-
-// println(Foo(1).fmap((x: Int) => x + 1)) // 6
+println(Foo(1).fmap((x: Int) => x + 1)) // 6
 
 ///////////////////////////////////////////////////////////////////////////////
 
