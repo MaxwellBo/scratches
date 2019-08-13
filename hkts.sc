@@ -6,7 +6,7 @@ def addCurried(x: Int)(y: Int) = x + y
 
 // println(addCurried(3)(5))
 
-def add2 = addCurried(2) _
+val add2: Function1[Int, Int]= addCurried(2)
 
 // println(add2(3))
 
@@ -26,7 +26,7 @@ implicit val x: String = "up here"
 
 def implicitString()(implicit x: String) = x
 
-// println(implicitString())
+// println(implicitString()) // up here
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -37,8 +37,8 @@ def primativeImplicitly[T](implicit x: T): T  = {
   x
 }
 
-// println(primativeImplicitly[Boolean])
-// println(primativeImplicitly[Int])
+// println(primativeImplicitly[Boolean]) // true
+// println(primativeImplicitly[Int]) // 5
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -128,6 +128,9 @@ implicit class EncodeSyntax[A](private val self: A) extends AnyVal {
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// YOUR CONCERNS
+
 import EncodeInstances._
 import EncodeSyntax._
 
@@ -147,35 +150,21 @@ val me = Person(name="Max Bo", age=22, alive=true)
 
 println(me.encode().innerString)
 
-////////////////////////////////////////////////////////////////////////////////
-
-object Encode {
-  def encode[A](x: A)(implicit instance: Encode[A]): Json = {
-    instance.encode(x)
-  }
-
-  // is the same as 
-
-  def encodePrime[A: Encode](x: A): Json = {
-    //            ^ implicit Encode[A] in scope (desugars to definition above)
-    val instance = implicitly[Encode[A]]
-    instance.encode(x)
-  }
+def needsAnEncoder[A](a: A)(implicit instance: Encode[A]) {
+  println(a.encode().innerString)
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-case class NoEncoder()
-
-def needsAnEncoder[A: Encode](a: A) {
+def needsAnEncoderPrime[A: Encode](a: A) {
   println(a.encode().innerString)
 }
 
 // needsAnEncoder(me)
 
-// hkts.sc:150: could not find implicit value for evidence parameter of type ammonite.$file.hkts.Encode[ammonite.$file.hkts.NoEncoder]
-// val res_28 = needsAnEncoder(NoEncoder())
-// needsAnEncoder(NoEncoder())
+case class HasNoEncoder()
+
+// hkts.sc:150: could not find implicit value for evidence parameter of type ammonite.$file.hkts.Encode[ammonite.$file.hkts.HasNoEncoder]
+// val res_28 = needsAnEncoder(HasNoEncoder())
+// needsAnEncoder(HasNoEncoder())
 
 ////////////////////////////////////////////////////////////////////////////////
 
