@@ -120,10 +120,8 @@ object EncodeInstances {
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 object EncodeSyntax {
-  implicit class EncodeExtensions[A](private val self: A) extends AnyVal {
+  implicit class EncodeIdExtensions[A](private val self: A) extends AnyVal {
     def encode()(implicit instance: Encode[A]): Json = {
       instance.encode(self)
     }
@@ -183,104 +181,110 @@ case class HasNoEncoder()
 
 // what if we want the `.map` to work on not just lists, but anything?
 
-case class Foo[T](x: T)
+case class Foo[T](a: T)
 
 trait Functor[F[_]] {
-  def fmap[A, B](fa: F[A])(f: A => B): F[B]
+  def map[A, B](fa: F[A])(f: A => B): F[B]
 }
-
 
 object FunctorInstances {
     // @ List(1, 2, 3).map(x => x + 1)
   // res0: List[Int] = List(2, 3, 4)
   implicit val listInstance: Functor[List] = new Functor[List] {
-    def fmap[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
+    def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
   }
 
   // our custom function for our container (we can define Functor instances for anything we want!)
   implicit val fooInstance: Functor[Foo] = new Functor[Foo] {
-    def fmap[A, B](fa: Foo[A])(f: A => B): Foo[B] = Foo(f(fa.x))
+    def map[A, B](fa: Foo[A])(f: A => B): Foo[B] = Foo(f(fa.a))
+  }
+}
+
+object FunctorSyntax {
+  implicit final class FunctorExtensions[F[_], A](private val self: F[A]) extends AnyVal {
+    def map[B](f: A => B)(implicit instance: Functor[F]): F[B] = {
+      instance.map(self)(f)
+    }
   }
 }
 
 import FunctorInstances._
 import FunctorSyntax._
 
-object FunctorSyntax {
-  implicit final class FunctorExtensions[F[_], A](private val self: F[A]) extends AnyVal {
-    def fmap[B](f: A => B)(implicit instance: Functor[F]): F[B] = {
-      instance.fmap(self)(f)
+println(List(1, 2, 3).map((x: Int) => x + 1)) // List(2, 3, 4)
+println(Foo(1).map((x: Int) => x + 1)) // 6
+
+def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
+  xs.map(_ + 1)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+trait Monad[F[_]] {
+  def pure[A](a: A): F[A]
+  def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
+}
+
+object MonadInstances {
+  implicit val listInstance: Monad[List] = new Monad[List] {
+    def pure[A](a: A): List[A] = List(a)
+    def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
+  }
+
+  implicit val fooInstance: Monad[Foo] = new Monad[Foo] {
+    def pure[A](a: A): Foo[A] = Foo(a)
+    def flatMap[A, B](fa: Foo[A])(f: A => Foo[B]): Foo[B] = f(fa.a)
+  }
+}
+
+object MonadSyntax {
+  implicit class MonadIdExtensions[A](private val self: A) extends AnyVal {
+    def pure[F[_]]()(implicit instance: Monad[F]): F[A] = {
+      instance.pure(self)
+    }
+  }
+
+  implicit final class MonadExtensions[F[_], A](private val self: F[A]) extends AnyVal {
+    def flatMap[B](f: A => F[B])(implicit instance: Monad[F]): F[B] = {
+      instance.flatMap(self)(f)
     }
   }
 }
 
-println(Foo(1).fmap((x: Int) => x + 1)) // 6
+import FunctorInstances._
+import FunctorSyntax._
+import MonadInstances._
+import MonadSyntax._
 
-///////////////////////////////////////////////////////////////////////////////
+println(
+  List(0, 1, 2).flatMap(n => 
+    List(n * 10, n * 100).flatMap(big => 
+      List((n, big))
+    )
+  )
+)
 
-trait RowA[F[_]] {
-  def x: F[String]
-  def y: F[Int]
-}
+// using `for` comprehension, we get a nicely sugared form
 
-// def id(f) = f
+println(
+  for {
+    n    <- List(0, 1, 2)
+    big  <- List(n * 10, n * 100)
+  } yield (n, big)
+)
 
-type InsertRowA = RowA[Id]
-type PatchRowA = RowA[Option]
+// Effectively identitical to list comprehensions in Python
+// ```
+// [ (n, big) 
+//   for n in [0, 1, 2] 
+//   for big in [n * 10, n * 100 ] 
+// ]
+// ```
+//
 
-val insert = new InsertRowA {
-  def x = "hello"
-  def y = 5
-}
-
-val patch = new PatchRowA {
-  def x = Some("hello")
-  def y = None
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-// trait RowIncompat[F[_]] {
-//   def y: F[String]
-//   def z: F[Boolean]
-// }
-
-trait RowB[F[_]] {
-  def y: F[Int]
-  def z: F[Boolean]
-}
-
-type Join = RowA[Id] with RowB[Id]
-// type Join = RowA[Id] with RowIncompat[Id]
-
-// can't construct with typealias
-val join = new RowA[Id] with RowB[Id] {
-// val join = new RowA[Id] with RowIncompat[Id] {
-  def x = "hello"
-  def y = 5
-  def z = true
-}
-
-type Anon = { def x: String; def y: Int; def z: Boolean }
-
-def acceptsAJoin(join: Anon) = {
-  println(join.x)
-  println(join.y)
-  println(join.z)
-}
-
-// acceptsAJoin(join)
-
-type HasX = { def x: Int }
-type HasY = { def y: Int }
-type HasZ = { def z: Int }
-
-case class Coordinate(x: Int, y: Int)
-
-val origin = Coordinate(0, 0)
-
-def acceptsX(w: HasX with HasY) = {
-  println(w)
-}
-
-// acceptsX(origin)
+println(
+  for {
+    x <- Foo(1)
+    y <- Foo(x + 1)
+  } yield Foo((x, y))
+)
