@@ -92,8 +92,19 @@ import IntSyntax._
 // println(5.increment()) // 6
 
 ///////////////////////////////////////////////////////////////////////////////
+// ENCODE NORTHSTAR
 
-case class Json(innerString: String)
+// println(5.encode().value) // 5
+// println("hello".encode().value) // "hello"
+
+val me = Person(name="Max Bo", age=22, alive=true)
+
+// println(me.encode().value) // { "name": "Max Bo", "age": 22, "alive": true }
+
+///////////////////////////////////////////////////////////////////////////////
+// ENCODER LIBRARY IMPLEMENTATION
+
+case class Json(value: String)
 
 trait Encode[A] {
   def encode(x: A): Json
@@ -117,7 +128,7 @@ object EncodeInstances {
       val inner = 
         kv
           .toList
-          .map { case (k, v) => s"${encodeString.encode(k).innerString}: ${v.innerString}" }
+          .map { case (k, v) => s"${encodeString.encode(k).value}: ${v.value}" }
           .mkString(", ")
 
       val outer = s"{ ${inner} }"
@@ -135,7 +146,7 @@ object EncodeSyntax {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// YOUR CONCERNS
+// ENCODER USAGE
 
 import EncodeInstances._
 import EncodeSyntax._
@@ -159,19 +170,24 @@ implicit def encodePerson: Encode[Person] = new Encode[Person] {
       ).encode()
 }
 
-val me = Person(name="Max Bo", age=22, alive=true)
+// println(me.encode().value) // { "name": "Max Bo", "age": 22, "alive": true }
+// this now works!
 
-// println(me.encode().innerString)
+// obviously these do as well
+// println(5.encode().value)
+// println("hello".encode().value) 
+
+////////////////////////////////////////////////////////////////////////////////
 
 def needsAnEncoder[A](a: A)(implicit instance: Encode[A]) {
-  println(a.encode().innerString)
+  println(a.encode().value)
 }
 
 // sugars to
 
 def needsAnEncoderPrime[A: Encode](a: A) {
   // val instance = implicitly[Encode[A]] // we can still recover the instance
-  println(a.encode().innerString)
+  println(a.encode().value)
 }
 
 // needsAnEncoder(me)
@@ -269,23 +285,30 @@ def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// # FUNCTOR EXAMPLE 1 #
 
-case class User(id: Option[Int], child: Option[User])
+case class FamilyMember(age: Int, parent: Option[FamilyMember])
 
-val grandchild = User(id=None, child=None)
-val child = User(id=None, child=Some(grandchild))
-val user = User(id=Some(0), child=Some(child))
+val grandad = FamilyMember(age=79, parent=None)
+val mum = FamilyMember(age=55, parent=Some(grandad))
+val me2 = FamilyMember(age=22, parent=Some(mum))
 
-def getChildId(user: User): Option[Option[Int]] = {
-  user.child.map(_.id)
+// Functors are great for modifying wrapped data...
+def getParentAge(member: FamilyMember): Option[Int] = {
+  member.parent.map(_.age)
 }
 
+// ...but not so good at dealing with chained operations.
+// this type would get bigger and bigger as we traversed up the family tree
 // if only there was some way to flatten these down 🤔 
-def getGrandchildId(user: User): Option[Option[Option[Int]]] = {
-  user.child.map(_.child.map(_.id))
+def getGrandparentAge(member: FamilyMember): Option[Option[Int]] = {
+  member.parent.map(_.parent.map(_.age))
+  //           ^             ^ multiple successive Functor operations
+  //                           causes nesting
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// # FUNCTOR EXAMPLE 2 #
 
 def poll(backoff: Int): IO[Int] = {
   // wait for backoff seconds before polling again
@@ -323,6 +346,7 @@ object MonadInstances {
   implicit val listMonadInstance: Monad[List] = new Monad[List] {
     def pure[A](a: A): List[A] = List(a)
     def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
+    def flatten[A](ffa: List[List[A]]): List[A] = ffa.flatten
   }
 
   implicit val optionMonadInstance: Monad[Option] = new Monad[Option] {
