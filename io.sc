@@ -1,3 +1,5 @@
+// https://www.stackage.org/haddock/lts-8.13/ghc-prim-0.5.0.0/src/GHC-Types.html#IO
+// https://stackoverflow.com/questions/3124591/is-haskell-really-a-purely-functional-language-considering-unsafeperformio/3124776
 class IO[+A](val unsafeInterpret: () => A) { s =>
 
   def map[B](f: A => B) = flatMap(f.andThen(IO.effect(_)))
