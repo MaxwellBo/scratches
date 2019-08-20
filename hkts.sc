@@ -142,7 +142,6 @@ import EncodeSyntax._
 
 case class Person(name: String, age: Int, alive: Boolean)
 
-
 // at this point in type, we break object orientation.
 // We've defined the Encode[Person] _seperate_ (!) from Person.
 // We've seperated behaviour and data.
@@ -187,29 +186,29 @@ case class HasNoEncoder()
 
 // what if we want the `.map` to work on not just lists, but anything?
 
-sealed trait OptionP[+A] 
-case class SomeP[+A](value: A) extends OptionP[A]
-case object NoneP extends OptionP[Nothing]
+// sealed trait Option[+A] 
+// case class Some[+A](value: A) extends Option[A]
+// case object None extends Option[Nothing]
 
 object OptionOps {
-  def none[A]: OptionP[A] = NoneP
+  def none[A]: Option[A] = None
 
   implicit final class OptionIdExtensions[A](val self: A) extends AnyVal {
-    def some: OptionP[A] = SomeP(self)
+    def some: Option[A] = Some(self)
   }
 }
 
-sealed trait EitherP[+E, +A]
-final case class RightP[+E, +A](value: A) extends EitherP[E, A]
-final case class LeftP[+E, +A](value: E) extends EitherP[E, A]
+// sealed trait Either[+E, +A]
+// final case class Right[+E, +A](value: A) extends Either[E, A]
+// final case class Left[+E, +A](value: E) extends Either[E, A]
 
 object EitherOps {
   implicit final class EitherIdExtensions[A](val self: A) extends AnyVal {
-    final def left[B]: EitherP[A, B] =
-      LeftP(self)
+    final def left[B]: Either[A, B] =
+      Left(self)
   
-    final def right[B]: EitherP[B, A] =
-      RightP(self)
+    final def right[B]: Either[B, A] =
+      Right(self)
   }
 }
 
@@ -225,19 +224,19 @@ object FunctorInstances {
     def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
   }
 
-  implicit val optionFunctorInstance: Functor[OptionP] = new Functor[OptionP] {
-    def map[A, B](fa: OptionP[A])(f: A => B): OptionP[B] = fa match {
-      case SomeP(a) => SomeP(f(a))
-      case n@NoneP => n
+  implicit val optionFunctorInstance: Functor[Option] = new Functor[Option] {
+    def map[A, B](fa: Option[A])(f: A => B): Option[B] = fa match {
+      case Some(a) => Some(f(a))
+      case n@None => n
     }
   }
 
   // if you're gonna say something like "oh this is so much nicer in Haskell"
   // then shut the fuck up
-  implicit def eitherFunctorInstance[E]: Functor[EitherP[E, ?]] = new Functor[EitherP[E, ?]] {
-    def map[A, B](fa: EitherP[E, A])(f: A => B): EitherP[E, B] = fa match {
-      case RightP(a) => RightP(f(a))
-      case LeftP(e) => LeftP(e)
+  implicit def eitherFunctorInstance[E]: Functor[Either[E, ?]] = new Functor[Either[E, ?]] {
+    def map[A, B](fa: Either[E, A])(f: A => B): Either[E, B] = fa match {
+      case Right(a) => Right(f(a))
+      case Left(e) => Left(e)
     }
   }
 }
@@ -255,19 +254,48 @@ import FunctorSyntax._
 import EitherOps._
 import OptionOps._
 
-println(implicitly[Functor[EitherP[String, ?]]].map(5.right[String])(_ + 1))
+println(implicitly[Functor[Either[String, ?]]].map(5.right[String])(_ + 1))
 
 // println(List(1, 2, 3).map(_ + 1)) // List(2, 3, 4)
 
-// println(5.some.map(_ + 1)) // SomeP(6)
-// println(none[Int].map(_ + 1)) // NoneP
+// println(5.some.map(_ + 1)) // Some(6)
+// println(none[Int].map(_ + 1)) // None
 
-// println(5.right[String].map(_ + 1)) // RightP(6)
-// println("msg".left[Int].map(_ + 1)) // LeftP("msg")
+// println(5.right[String].map(_ + 1)) // Right(6)
+// println("msg".left[Int].map(_ + 1)) // Left("msg")
 
 def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
   xs.map(_ + 1)
 }
+
+case class User(id: Option[Int], child: Option[User])
+
+val grandchild = User(id=None, child=None)
+val child = User(id=None, child=Some(grandchild))
+val user = User(id=Some(0), child=Some(child))
+
+def getChildId(user: User): Option[Option[Int]] = {
+  user.child.map(_.id)
+}
+
+// if only there was some way to flatten these down 🤔 
+def getGrandchildId(user: User): Option[Option[Option[Int]]] = {
+  user.child.map(_.child.map(_.id))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+def poll(backoff: Int): IO[Int] = {
+  // wait for backoff seconds before polling again
+  // poll some endpoint
+  // get the new endpoint provided backoff value
+  IO.effect(backoff + 1)
+}
+
+// if only there was some way to flatten these down 🤔 
+// def naivePoll3Times(): IO[IO[IO[Int]]] = {
+//   poll(backoff=1).map(poll).map(poll)
+// }
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -282,19 +310,36 @@ object MonadInstances {
     def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
   }
 
-  implicit val optionMonadInstance: Monad[OptionP] = new Monad[OptionP] {
-    def pure[A](a: A): OptionP[A] = SomeP(a)
-    def flatMap[A, B](fa: OptionP[A])(f: A => OptionP[B]): OptionP[B] = fa match {
-      case SomeP(a) => f(a)
-      case n@NoneP => n
+  implicit val optionMonadInstance: Monad[Option] = new Monad[Option] {
+    def pure[A](a: A): Option[A] = Some(a)
+
+    def flatMap[A, B](fa: Option[A])(f: A => Option[B]): Option[B] = fa match {
+      case Some(a) => f(a)
+      case _ => None
+    }
+
+    // OR
+
+    def flatten[A](ffa: Option[Option[A]]): Option[A] = ffa match {
+      case Some(Some(a)) => Some(a)
+      case _ => None
     }
   }
 
-  implicit def eitherFunctorInstance[E]: Monad[EitherP[E, ?]] = new Monad[EitherP[E, ?]] {
-    def pure[A](a: A): EitherP[E, A] = RightP(a)
-    def flatMap[A, B](fa: EitherP[E, A])(f: A => EitherP[E, B]): EitherP[E, B] = fa match {
-      case RightP(a) => f(a)
-      case LeftP(e) => LeftP(e)
+  implicit def eitherFunctorInstance[E]: Monad[Either[E, ?]] = new Monad[Either[E, ?]] {
+    def pure[A](a: A): Either[E, A] = Right(a)
+
+    def flatMap[A, B](fa: Either[E, A])(f: A => Either[E, B]): Either[E, B] = fa match {
+      case Right(a) => f(a)
+      case Left(e) => Left(e)
+    }
+
+    // OR
+
+    def flatten[A](ffa: Either[E, Either[E, A]]): Either[E, A] = ffa match {
+      case Right(Right(a)) => Right(a)
+      case Right(Left(e))  => Left(e)
+      case Left(e)         => Left(e)
     }
   }
 }
@@ -345,7 +390,7 @@ val listComprehension: List[(Int, Int)] = for {
 // ```
 //
 
-// val bailsOutOnNone: OptionP[(Int, Int)]= for {
+// val bailsOutOnNone: Option[(Int, Int)]= for {
 //   x <- Some(5)
 //   x <- None
 //   y <- Some(x + 6)
@@ -353,7 +398,7 @@ val listComprehension: List[(Int, Int)] = for {
 
 // // println(bailsOutOnNone)
 
-// val bailsOutOnLeft: EitherP[String, (Int, Int)] = for {
+// val bailsOutOnLeft: Either[String, (Int, Int)] = for {
 //   x <- Right(5)
 //   // x <- Left("error")
 //   y <- Right(x + 6)
@@ -381,6 +426,11 @@ object MoreMonadInstances {
 
     def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B] =
       IO.effect(f(fa.unsafeInterpret()).unsafeInterpret())
+
+    // OR
+
+    def flatten[A](ffa: IO[IO[A]]): IO[A] =
+      IO.effect(ffa.unsafeInterpret().unsafeInterpret())
   }
 }
 
@@ -401,6 +451,8 @@ val echo: IO[Unit] = for {
   _        <- putStrLn("Echoing: " + str)
 } yield ()
 
+// echo.unsafeInterpret()
+
 // is roughyl equivalent to
 
 // putStrLn("Please enter something to be echoed:").flatMap(_ => 
@@ -409,7 +461,21 @@ val echo: IO[Unit] = for {
 //   )
 // )
 
-// echo.unsafeInterpret()
+def workingPoll3Times(): IO[Int] = {
+  poll(backoff=1)
+    .flatMap(poll)
+    .flatMap(poll)
+}
+
+def workingPoll3TimesWithForNation(): IO[Int] = for {
+  newBackoff <- poll(backoff=1)
+  newBackoff2 <- poll(newBackoff)
+  finalBackoff <- poll(newBackoff2)
+} yield finalBackoff
+
+// println(workingPoll3Times().unsafeInterpret())
+// println(workingPoll3TimesWithForNation().unsafeInterpret())
+
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -423,9 +489,34 @@ object EvenMoreFunctorInstances {
   }
 }
 
+import FunctorSyntax._
+import EvenMoreFunctorInstances._
+
 // val roundtrip: Function1[Int, Int] = showInt.map(unshowInt)
 
 // println(roundtrip(10))
+
+object EvenMoreMonadInstances {
+  implicit def function1MonadInstance[R]: Monad[Function1[R, ?]] = new Monad[Function1[R, ?]] {
+
+    def pure[A](a: A): Function1[R, A] = (r: R) => a
+
+    def flatMap[A, B](fa: Function1[R, A])(f: A => Function1[R, B]): Function1[R, B] = { (r: R) =>
+      val a: A = fa(r)
+      val fb: Function1[R, B] = f(a)
+      val b: B = fb(r)
+      b
+    }
+
+    // OR
+
+    def flatten[A](ffa: Function1[R, Function1[R, A]]): Function1[R, A] = { (r: R) => 
+      val fa: Function1[R, A] = ffa(r)
+      val a: A = fa(r)
+      a
+    }
+  }
+}
 
 // final case class Kleisli[F[_], A, B](run: A => F[B]) {
 //   def compose[Z](k: Kleisli[F, Z, A])(implicit F: FlatMap[F]): Kleisli[F, Z, B] =
