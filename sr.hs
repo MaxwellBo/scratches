@@ -95,6 +95,18 @@ readFromContext = do
 
 --------------------------------------------------------------------------------
 
+instance Monoid a => Applicative ((,) a) where
+  pure x = (mempty, x)
+  (u, f) <*> (v, x) = (u <> v, f x)
+  liftA2 f (u, x) (v, y) = (u <> v, f x y)
+
+-- | @since 4.9.0.0
+instance Monoid a => Monad ((,) a) where
+  (u, a) >>= k = case k a of (v, b) -> (u <> v, b)
+
+
+--------------------------------------------------------------------------------
+
 newtype State s a = State { runState :: s -> (a,s) }
 
 -- class Functor f where
