@@ -181,7 +181,32 @@ case class HasNoEncoder()
 
 // what if we want the `.map` to work on not just lists, but anything?
 
-case class Foo[T](a: T)
+sealed trait OptionP[+A] 
+case class SomeP[+A](value: A) extends OptionP[A]
+case object NoneP extends OptionP[Nothing]
+
+object OptionOps {
+  def none[A]: OptionP[A] = NoneP
+
+  implicit final class OptionIdExtensions[A](val self: A) extends AnyVal {
+    def some: OptionP[A] = SomeP(self)
+  }
+}
+
+sealed trait EitherP[+E, +A]
+final case class RightP[+E, +A](value: A) extends EitherP[E, A]
+final case class LeftP[+E, +A](value: E) extends EitherP[E, A]
+
+object EitherOps {
+  implicit final class EitherIdExtensions[A](val self: A) extends AnyVal {
+    final def left[B]: EitherP[A, B] =
+      LeftP(self)
+  
+    final def right[B]: EitherP[B, A] =
+      RightP(self)
+  }
+}
+
 
 trait Functor[F[_]] {
   def map[A, B](fa: F[A])(f: A => B): F[B]
@@ -194,9 +219,20 @@ object FunctorInstances {
     def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
   }
 
-  // our custom function for our container (we can define Functor instances for anything we want!)
-  implicit val fooFunctorInstance: Functor[Foo] = new Functor[Foo] {
-    def map[A, B](fa: Foo[A])(f: A => B): Foo[B] = Foo(f(fa.a))
+  implicit val optionFunctorInstance: Functor[OptionP] = new Functor[OptionP] {
+    def map[A, B](fa: OptionP[A])(f: A => B): OptionP[B] = fa match {
+      case SomeP(a) => SomeP(f(a))
+      case n@NoneP => n
+    }
+  }
+
+  // if you're gonna say something like "oh this is so much nicer in Haskell"
+  // then shut the fuck up
+  implicit def eitherFunctorInstance[E]: Functor[({type λ[α] = EitherP[E, α]})#λ] = new Functor[({type λ[α] = EitherP[E, α]})#λ] {
+    def map[A, B](fa: EitherP[E, A])(f: A => B): EitherP[E, B] = fa match {
+      case RightP(a) => RightP(f(a))
+      case LeftP(e) => LeftP(e)
+    }
   }
 }
 
@@ -210,9 +246,19 @@ object FunctorSyntax {
 
 import FunctorInstances._
 import FunctorSyntax._
+import EitherOps._
+import OptionOps._
 
-// println(List(1, 2, 3).map((x: Int) => x + 1)) // List(2, 3, 4)
-// println(Foo(1).map((x: Int) => x + 1)) // 6
+println(implicitly[Functor[({type λ[α] = EitherP[String, α]})#λ]].map(5.right[String])(_ + 1))
+
+println(List(1, 2, 3).map((x: Int) => x + 1)) // List(2, 3, 4)
+
+println(5.some.map((x: Int) => x + 1)) // SomeP(6)
+println(none[Int].map((x: Int) => x + 1)) // NoneP
+
+// WHY THE FUCK WON'T THIS WORK
+// println(5.right[String].map((x: Int) => x + 1)) // RightP(6)
+// println("msg".left[Int].map((x: Int) => x + 1)) // LeftP("msg")
 
 def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
   xs.map(_ + 1)
@@ -231,9 +277,20 @@ object MonadInstances {
     def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
   }
 
-  implicit val fooMonadInstance: Monad[Foo] = new Monad[Foo] {
-    def pure[A](a: A): Foo[A] = Foo(a)
-    def flatMap[A, B](fa: Foo[A])(f: A => Foo[B]): Foo[B] = f(fa.a)
+  implicit val optionMonadInstance: Monad[OptionP] = new Monad[OptionP] {
+    def pure[A](a: A): OptionP[A] = SomeP(a)
+    def flatMap[A, B](fa: OptionP[A])(f: A => OptionP[B]): OptionP[B] = fa match {
+      case SomeP(a) => f(a)
+      case n@NoneP => n
+    }
+  }
+
+  implicit def eitherFunctorInstance[E]: Monad[({type λ[α] = EitherP[E, α]})#λ] = new Monad[({type λ[α] = EitherP[E, α]})#λ] {
+    def pure[A](a: A): EitherP[E, A] = RightP(a)
+    def flatMap[A, B](fa: EitherP[E, A])(f: A => EitherP[E, B]): EitherP[E, B] = fa match {
+      case RightP(a) => f(a)
+      case LeftP(e) => LeftP(e)
+    }
   }
 }
 
@@ -283,26 +340,19 @@ val listComprehension: List[(Int, Int)] = for {
 // ```
 //
 
-val fooComprehension: Foo[(Int, Int)] = for {
-  x <- Foo(5)
-  y <- Foo(x + 6)
-} yield (x, y)
+// val bailsOutOnNone: OptionP[(Int, Int)]= for {
+//   x <- Some(5)
+//   x <- None
+//   y <- Some(x + 6)
+// } yield (x, y)
 
-// println(fooComprehension)
+// // println(bailsOutOnNone)
 
-val bailsOutOnNone: Option[(Int, Int)]= for {
-  x <- Some(5)
-  // x <- None
-  y <- Some(x + 6)
-} yield (x, y)
-
-// println(bailsOutOnNone)
-
-val bailsOutOnLeft: Either[String, (Int, Int)] = for {
-  x <- Right(5)
-  // x <- Left("error")
-  y <- Right(x + 6)
-} yield (x, y)
+// val bailsOutOnLeft: EitherP[String, (Int, Int)] = for {
+//   x <- Right(5)
+//   // x <- Left("error")
+//   y <- Right(x + 6)
+// } yield (x, y)
 
 // println(bailsOutOnLeft)
 
@@ -315,8 +365,6 @@ object IO {
 }
 
 object MoreFunctorInstances {
-    // @ List(1, 2, 3).map(x => x + 1)
-  // res0: List[Int] = List(2, 3, 4)
   implicit val ioFunctorInstance: Functor[IO] = new Functor[IO] {
     def map[A, B](fa: IO[A])(f: A => B): IO[B] = IO.effect(f(fa.unsafeInterpret()))
   }
@@ -345,8 +393,15 @@ val getStrLn: IO[String] =
 val echo: IO[Unit] = for {
   _        <- putStrLn("Please enter something to be echoed:")
   str      <- getStrLn
-  _        <- putStrLn("Echoing:" + str)
+  _        <- putStrLn("Echoing: " + str)
 } yield ()
 
-echo.unsafeInterpret()
+
+// putStrLn("Please enter something to be echoed:").flatMap(_ => 
+//   getStrLn.flatMap(str => 
+//     putStrLn("Echoing: " + str)
+//   )
+// )
+
+// echo.unsafeInterpret()
 
