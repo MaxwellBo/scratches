@@ -234,7 +234,7 @@ object FunctorInstances {
 
   // if you're gonna say something like "oh this is so much nicer in Haskell"
   // then shut the fuck up
-  implicit def eitherFunctorInstance[E]: Functor[({type λ[α] = EitherP[E, α]})#λ] = new Functor[({type λ[α] = EitherP[E, α]})#λ] {
+  implicit def eitherFunctorInstance[E]: Functor[EitherP[E, ?]] = new Functor[EitherP[E, ?]] {
     def map[A, B](fa: EitherP[E, A])(f: A => B): EitherP[E, B] = fa match {
       case RightP(a) => RightP(f(a))
       case LeftP(e) => LeftP(e)
@@ -255,7 +255,7 @@ import FunctorSyntax._
 import EitherOps._
 import OptionOps._
 
-// println(implicitly[Functor[({type λ[α] = EitherP[String, α]})#λ]].map(5.right[String])(_ + 1))
+println(implicitly[Functor[EitherP[String, ?]]].map(5.right[String])(_ + 1))
 
 // println(List(1, 2, 3).map(_ + 1)) // List(2, 3, 4)
 
@@ -290,7 +290,7 @@ object MonadInstances {
     }
   }
 
-  implicit def eitherFunctorInstance[E]: Monad[({type λ[α] = EitherP[E, α]})#λ] = new Monad[({type λ[α] = EitherP[E, α]})#λ] {
+  implicit def eitherFunctorInstance[E]: Monad[EitherP[E, ?]] = new Monad[EitherP[E, ?]] {
     def pure[A](a: A): EitherP[E, A] = RightP(a)
     def flatMap[A, B](fa: EitherP[E, A])(f: A => EitherP[E, B]): EitherP[E, B] = fa match {
       case RightP(a) => f(a)
@@ -423,9 +423,9 @@ object EvenMoreFunctorInstances {
   }
 }
 
-val roundtrip: Function1[Int, Int] = showInt.map(unshowInt)
+// val roundtrip: Function1[Int, Int] = showInt.map(unshowInt)
 
-println(roundtrip(10))
+// println(roundtrip(10))
 
 // final case class Kleisli[F[_], A, B](run: A => F[B]) {
 //   def compose[Z](k: Kleisli[F, Z, A])(implicit F: FlatMap[F]): Kleisli[F, Z, B] =
