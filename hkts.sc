@@ -268,6 +268,8 @@ def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
   xs.map(_ + 1)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 case class User(id: Option[Int], child: Option[User])
 
 val grandchild = User(id=None, child=None)
@@ -302,6 +304,19 @@ def poll(backoff: Int): IO[Int] = {
 trait Monad[F[_]] {
   def pure[A](a: A): F[A]
   def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
+  
+  def flatten[A](ffa: F[F[A]]): F[A]
+  // ^ this is a bit of an oddball method. It's often not talked about in
+  // literature, but you CAN make a Monad with just a `flatten` function (+ `pure`),
+  // and skip the `flatMap` (arguably, the more complex) function entirely
+  // This is because you can derive `flatMap` with `flatten, and vice-versa.
+  
+  // These default implementations are as follows:
+
+  // def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = fa.map(f).flatten
+  // def flatten[A](ffa: F[F[A]]): F[A] = ffa.flatMap(x => x)
+
+  // We're not going to define these to force us to implement Monad in both ways.
 }
 
 object MonadInstances {
