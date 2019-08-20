@@ -156,7 +156,7 @@ implicit def encodePerson: Encode[Person] = new Encode[Person] {
 
 val me = Person(name="Max Bo", age=22, alive=true)
 
-println(me.encode().innerString)
+// println(me.encode().innerString)
 
 def needsAnEncoder[A](a: A)(implicit instance: Encode[A]) {
   println(a.encode().innerString)
@@ -190,12 +190,12 @@ trait Functor[F[_]] {
 object FunctorInstances {
     // @ List(1, 2, 3).map(x => x + 1)
   // res0: List[Int] = List(2, 3, 4)
-  implicit val listInstance: Functor[List] = new Functor[List] {
+  implicit val listFunctorInstance: Functor[List] = new Functor[List] {
     def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
   }
 
   // our custom function for our container (we can define Functor instances for anything we want!)
-  implicit val fooInstance: Functor[Foo] = new Functor[Foo] {
+  implicit val fooFunctorInstance: Functor[Foo] = new Functor[Foo] {
     def map[A, B](fa: Foo[A])(f: A => B): Foo[B] = Foo(f(fa.a))
   }
 }
@@ -211,8 +211,8 @@ object FunctorSyntax {
 import FunctorInstances._
 import FunctorSyntax._
 
-println(List(1, 2, 3).map((x: Int) => x + 1)) // List(2, 3, 4)
-println(Foo(1).map((x: Int) => x + 1)) // 6
+// println(List(1, 2, 3).map((x: Int) => x + 1)) // List(2, 3, 4)
+// println(Foo(1).map((x: Int) => x + 1)) // 6
 
 def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
   xs.map(_ + 1)
@@ -226,12 +226,12 @@ trait Monad[F[_]] {
 }
 
 object MonadInstances {
-  implicit val listInstance: Monad[List] = new Monad[List] {
+  implicit val listMonadInstance: Monad[List] = new Monad[List] {
     def pure[A](a: A): List[A] = List(a)
     def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
   }
 
-  implicit val fooInstance: Monad[Foo] = new Monad[Foo] {
+  implicit val fooMonadInstance: Monad[Foo] = new Monad[Foo] {
     def pure[A](a: A): Foo[A] = Foo(a)
     def flatMap[A, B](fa: Foo[A])(f: A => Foo[B]): Foo[B] = f(fa.a)
   }
@@ -256,35 +256,97 @@ import FunctorSyntax._
 import MonadInstances._
 import MonadSyntax._
 
-println(
+val manualListComprehension = 
   List(0, 1, 2).flatMap(n => 
     List(n * 10, n * 100).flatMap(big => 
       List((n, big))
     )
   )
-)
+
+// println(manualListComprehension)
 
 // using `for` comprehension, we get a nicely sugared form
 
-println(
-  for {
-    n    <- List(0, 1, 2)
-    big  <- List(n * 10, n * 100)
-  } yield (n, big)
-)
+val listComprehension: List[(Int, Int)] = for {
+  n    <- List(0, 1, 2)
+  big  <- List(n * 10, n * 100)
+} yield (n, big)
+
+// println(listComprehension)
 
 // Effectively identitical to list comprehensions in Python
 // ```
-// [ (n, big) 
+// list_comprehension = [ (n, big) 
 //   for n in [0, 1, 2] 
 //   for big in [n * 10, n * 100 ] 
 // ]
 // ```
 //
 
-println(
-  for {
-    x <- Foo(1)
-    y <- Foo(x + 1)
-  } yield Foo((x, y))
-)
+val fooComprehension: Foo[(Int, Int)] = for {
+  x <- Foo(5)
+  y <- Foo(x + 6)
+} yield (x, y)
+
+// println(fooComprehension)
+
+val bailsOutOnNone: Option[(Int, Int)]= for {
+  x <- Some(5)
+  // x <- None
+  y <- Some(x + 6)
+} yield (x, y)
+
+// println(bailsOutOnNone)
+
+val bailsOutOnLeft: Either[String, (Int, Int)] = for {
+  x <- Right(5)
+  // x <- Left("error")
+  y <- Right(x + 6)
+} yield (x, y)
+
+// println(bailsOutOnLeft)
+
+///////////////////////////////////////////////////////////////////////////////
+
+class IO[+A](val unsafeInterpret: () => A) 
+
+object IO {
+  def effect[A](eff: => A) = new IO(() => eff)
+}
+
+object MoreFunctorInstances {
+    // @ List(1, 2, 3).map(x => x + 1)
+  // res0: List[Int] = List(2, 3, 4)
+  implicit val ioFunctorInstance: Functor[IO] = new Functor[IO] {
+    def map[A, B](fa: IO[A])(f: A => B): IO[B] = IO.effect(f(fa.unsafeInterpret()))
+  }
+}
+
+object MoreMonadInstances {
+  implicit val ioMonadInstance: Monad[IO] = new Monad[IO] {
+    def pure[A](a: A): IO[A] = IO.effect(a)
+
+    def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B] =
+      IO.effect(f(fa.unsafeInterpret()).unsafeInterpret())
+  }
+}
+
+import FunctorSyntax._
+import MonadSyntax._
+import MoreFunctorInstances._
+import MoreMonadInstances._
+
+def putStrLn(line: String): IO[Unit] = 
+  IO.effect(println(line))
+
+val getStrLn: IO[String] = 
+  IO.effect(scala.io.StdIn.readLine())
+
+val echo: IO[Unit] = for {
+  _        <- putStrLn("Please enter something to be echoed:")
+  str      <- getStrLn
+  _        <- putStrLn("Echoing:" + str)
+} yield ()
+
+echo.unsafeInterpret()
+
