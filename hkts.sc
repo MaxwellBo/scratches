@@ -270,7 +270,7 @@ import FunctorSyntax._
 import EitherOps._
 import OptionOps._
 
-println(implicitly[Functor[Either[String, ?]]].map(5.right[String])(_ + 1))
+// println(implicitly[Functor[Either[String, ?]]].map(5.right[String])(_ + 1))
 
 // println(List(1, 2, 3).map(_ + 1)) // List(2, 3, 4)
 
@@ -368,9 +368,11 @@ object MonadInstances {
   implicit def eitherFunctorInstance[E]: Monad[Either[E, ?]] = new Monad[Either[E, ?]] {
     def pure[A](a: A): Either[E, A] = Right(a)
 
-    def flatMap[A, B](fa: Either[E, A])(f: A => Either[E, B]): Either[E, B] = fa match {
+    def flatMap[A, B](fa: Either[E, A])(f: A => Either[E, B]): Either[E, B] = { 
+      fa match {
       case Right(a) => f(a)
       case Left(e) => Left(e)
+      }
     }
 
     // OR
@@ -429,19 +431,19 @@ val listComprehension: List[(Int, Int)] = for {
 // ```
 //
 
-// val bailsOutOnNone: Option[(Int, Int)]= for {
-//   x <- Some(5)
-//   x <- None
-//   y <- Some(x + 6)
-// } yield (x, y)
+val bailsOutOnNone: Option[(Int, Int)]= for {
+  // x <- Some(5)
+  x <- none[Int]
+  y <- Some(x + 6)
+} yield (x, y)
 
-// // println(bailsOutOnNone)
+// println(bailsOutOnNone)
 
-// val bailsOutOnLeft: Either[String, (Int, Int)] = for {
-//   x <- Right(5)
-//   // x <- Left("error")
-//   y <- Right(x + 6)
-// } yield (x, y)
+val bailsOutOnLeft: Either[String, (Int, Int)] = for {
+  // x <- Right(5)
+  x <- "error".left[Int]
+  y <- Right(x + 6)
+} yield (x, y)
 
 // println(bailsOutOnLeft)
 
