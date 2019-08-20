@@ -1,3 +1,5 @@
+import $plugin.$ivy.`org.spire-math::kind-projector:0.9.3`
+
 def add(x: Int, y: Int) = x + y
 
 // println(add(3, 5))
@@ -13,37 +15,41 @@ val add2: Function1[Int, Int] = addCurried(2)
 ///////////////////////////////////////////////////////////////////////////////
 
 
-def fNoArgs = println("fNoArgs got called")
+def emptyParamterList() = println("I'm a function that has an empty paramater list")
 
-// fNoArgs
-// fNoArgs
-// fNoArgs
+// emptyParamterList()
+// emptyParamterList()
+
+def noParameterList = println("I'm a function that has no paramater list")
+
+// noParameterList
+// noParameterList
 
 
 ///////////////////////////////////////////////////////////////////////////////
 
-implicit val x: String = "up here"
+implicit val implicitString: String = "implicit String"
 
 def implicitString()(implicit x: String) = x
 
-// println(implicitString()) // up here
+// println(implicitString()) // implicit String
 
 ///////////////////////////////////////////////////////////////////////////////
 
-implicit val booleanInstance:   Boolean = true
-implicit val intInstance:       Int     = 5
+implicit val implicitBoolean:   Boolean = true
+implicit val implicitInt:       Int     = 5
 
-def primativeImplicitly[T](implicit x: T): T  = {
+def rawImplicitly[T](implicit x: T): T  = {
   x
 }
 
-// println(primativeImplicitly[Boolean]) // true
-// println(primativeImplicitly[Int]) // 5
+// println(rawImplicitly[Boolean]) // true
+// println(rawImplicitly[Int]) // 5
 
 ///////////////////////////////////////////////////////////////////////////////
 
-implicit val listIntInstance:   List[Int]   = List(1)
-implicit val optionInstance:    Option[Int] = Some(1)
+implicit val implicitListInt:       List[Int]   = List(1)
+implicit val implicitOptionInt:     Option[Int] = Some(1)
 
 def hktImplicitly[F[_]](implicit x: F[Int]): F[Int]  = {
   x
@@ -60,8 +66,8 @@ def hktImplicitly[F[_]](implicit x: F[Int]): F[Int]  = {
 type Id[A] = A
 // * -> *
 
-implicit val listStringInstance:   List[String]   = List("hello")
-implicit val listBoolInstance:     List[Boolean]  = List(true)
+implicit val implicitListString:   List[String]   = List("hello")
+implicit val implicitListBoolean:     List[Boolean]  = List(true)
 
 def hktAppImplicitly[F[_], A](implicit x: F[A]): F[A]  = {
   x
@@ -162,7 +168,7 @@ def needsAnEncoder[A](a: A)(implicit instance: Encode[A]) {
   println(a.encode().innerString)
 }
 
-// is syntactically equivalent to
+// sugars to
 
 def needsAnEncoderPrime[A: Encode](a: A) {
   // val instance = implicitly[Encode[A]] // we can still recover the instance
@@ -249,16 +255,15 @@ import FunctorSyntax._
 import EitherOps._
 import OptionOps._
 
-println(implicitly[Functor[({type λ[α] = EitherP[String, α]})#λ]].map(5.right[String])(_ + 1))
+// println(implicitly[Functor[({type λ[α] = EitherP[String, α]})#λ]].map(5.right[String])(_ + 1))
 
-println(List(1, 2, 3).map((x: Int) => x + 1)) // List(2, 3, 4)
+// println(List(1, 2, 3).map(_ + 1)) // List(2, 3, 4)
 
-println(5.some.map((x: Int) => x + 1)) // SomeP(6)
-println(none[Int].map((x: Int) => x + 1)) // NoneP
+// println(5.some.map(_ + 1)) // SomeP(6)
+// println(none[Int].map(_ + 1)) // NoneP
 
-// WHY THE FUCK WON'T THIS WORK
-// println(5.right[String].map((x: Int) => x + 1)) // RightP(6)
-// println("msg".left[Int].map((x: Int) => x + 1)) // LeftP("msg")
+// println(5.right[String].map(_ + 1)) // RightP(6)
+// println("msg".left[Int].map(_ + 1)) // LeftP("msg")
 
 def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
   xs.map(_ + 1)
@@ -396,6 +401,7 @@ val echo: IO[Unit] = for {
   _        <- putStrLn("Echoing: " + str)
 } yield ()
 
+// is roughyl equivalent to
 
 // putStrLn("Please enter something to be echoed:").flatMap(_ => 
 //   getStrLn.flatMap(str => 
@@ -405,3 +411,23 @@ val echo: IO[Unit] = for {
 
 // echo.unsafeInterpret()
 
+///////////////////////////////////////////////////////////////////////////////
+
+val showInt: Function1[Int, String] = _.toString
+
+val unshowInt: Function1[String, Int] = _.toInt
+
+object EvenMoreFunctorInstances {
+  implicit def function1FunctorInstance[R]: Functor[Function1[R, ?]] = new Functor[Function1[R, ?]] {
+    def map[A, B](fa: Function1[R, A])(f: A => B): Function1[R, B] = fa.andThen(f)
+  }
+}
+
+val roundtrip: Function1[Int, Int] = showInt.map(unshowInt)
+
+println(roundtrip(10))
+
+// final case class Kleisli[F[_], A, B](run: A => F[B]) {
+//   def compose[Z](k: Kleisli[F, Z, A])(implicit F: FlatMap[F]): Kleisli[F, Z, B] =
+//     Kleisli[F, Z, B](z => k.run(z).flatMap(run))
+// }
