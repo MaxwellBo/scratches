@@ -199,35 +199,39 @@ case class HasNoEncoder()
 // needsAnEncoder(HasNoEncoder())
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// what if we want the `.map` to work on not just lists, but anything?
+////////////////////////////////////////////////////////////////////////////////
+// # FUNCTORS #
 
 // sealed trait Option[+A] 
 // case class Some[+A](value: A) extends Option[A]
 // case object None extends Option[Nothing]
 
-object OptionOps {
-  def none[A]: Option[A] = None
+case class FamilyMember(age: Int, parent: Option[FamilyMember])
 
-  implicit final class OptionIdExtensions[A](val self: A) extends AnyVal {
-    def some: Option[A] = Some(self)
-  }
+val grandad = FamilyMember(age=79, parent=None)
+val mum = FamilyMember(age=55, parent=Some(grandad))
+val son = FamilyMember(age=22, parent=Some(mum))
+
+val family: List[FamilyMember] = List(son, mum, grandad)
+
+def getAges(family: List[FamilyMember]): List[Int] = {
+  family.map(_.age)
 }
 
-// sealed trait Either[+E, +A]
-// final case class Right[+E, +A](value: A) extends Either[E, A]
-// final case class Left[+E, +A](value: E) extends Either[E, A]
-
-object EitherOps {
-  implicit final class EitherIdExtensions[A](val self: A) extends AnyVal {
-    final def left[B]: Either[A, B] =
-      Left(self)
-  
-    final def right[B]: Either[B, A] =
-      Right(self)
-  }
+def getParentAge(member: FamilyMember): Option[Int] = {
+  val parent: Option[FamilyMember] = member.parent
+  parent.map(_.age)
 }
 
+// println(getParentAge(son)) // Some(55)
+// println(getAges(family)) // List(22, 55, 79)
+
+// How do we make something like this? 🤔
+// def getAge[F[_]: ???](f: F[FamilyMember]): F[Int] = {
+//   f.map(_.age)
+// }
+
+////////////////////////////////////////////////////////////////////////////////
 
 trait Functor[F[_]] {
   def map[A, B](fa: F[A])(f: A => B): F[B]
@@ -246,15 +250,6 @@ object FunctorInstances {
       case n@None => n
     }
   }
-
-  // if you're gonna say something like "oh this is so much nicer in Haskell"
-  // then shut the fuck up
-  implicit def eitherFunctorInstance[E]: Functor[Either[E, ?]] = new Functor[Either[E, ?]] {
-    def map[A, B](fa: Either[E, A])(f: A => B): Either[E, B] = fa match {
-      case Right(a) => Right(f(a))
-      case Left(e) => Left(e)
-    }
-  }
 }
 
 object FunctorSyntax {
@@ -267,38 +262,21 @@ object FunctorSyntax {
 
 import FunctorInstances._
 import FunctorSyntax._
-import EitherOps._
-import OptionOps._
 
-// println(implicitly[Functor[Either[String, ?]]].map(5.right[String])(_ + 1))
-
-// println(List(1, 2, 3).map(_ + 1)) // List(2, 3, 4)
-
-// println(5.some.map(_ + 1)) // Some(6)
-// println(none[Int].map(_ + 1)) // None
-
-// println(5.right[String].map(_ + 1)) // Right(6)
-// println("msg".left[Int].map(_ + 1)) // Left("msg")
-
-def incrementAll[F[_]: Functor](xs: F[Int]): F[Int] = {
-  xs.map(_ + 1)
+def getAge[F[_]: Functor](f: F[FamilyMember]): F[Int] = {
+  f.map(_.age)
 }
+
+// val family: List[FamilyMember] = List(son, mum, grandad)
+val optionParent: Option[FamilyMember] = son.parent
+
+// println(getAge(family)) // List(22, 55, 79)
+// println(getAge(optionParent)) // Some(55)
 
 ////////////////////////////////////////////////////////////////////////////////
-// # FUNCTOR EXAMPLE 1 #
+// # FUNCTOR EXAMPLE 2 #
 
-case class FamilyMember(age: Int, parent: Option[FamilyMember])
-
-val grandad = FamilyMember(age=79, parent=None)
-val mum = FamilyMember(age=55, parent=Some(grandad))
-val me2 = FamilyMember(age=22, parent=Some(mum))
-
-// Functors are great for modifying wrapped data...
-def getParentAge(member: FamilyMember): Option[Int] = {
-  member.parent.map(_.age)
-}
-
-// ...but not so good at dealing with chained operations.
+// Functors are not good at dealing with chained operations.
 // this type would get bigger and bigger as we traversed up the family tree
 // if only there was some way to flatten these down 🤔 
 def getGrandparentAge(member: FamilyMember): Option[Option[Int]] = {
@@ -307,8 +285,6 @@ def getGrandparentAge(member: FamilyMember): Option[Option[Int]] = {
   //                           causes nesting
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// # FUNCTOR EXAMPLE 2 #
 
 def poll(backoff: Int): IO[Int] = {
   // wait for backoff seconds before polling again
@@ -364,25 +340,6 @@ object MonadInstances {
       case _ => None
     }
   }
-
-  implicit def eitherFunctorInstance[E]: Monad[Either[E, ?]] = new Monad[Either[E, ?]] {
-    def pure[A](a: A): Either[E, A] = Right(a)
-
-    def flatMap[A, B](fa: Either[E, A])(f: A => Either[E, B]): Either[E, B] = { 
-      fa match {
-      case Right(a) => f(a)
-      case Left(e) => Left(e)
-      }
-    }
-
-    // OR
-
-    def flatten[A](ffa: Either[E, Either[E, A]]): Either[E, A] = ffa match {
-      case Right(Right(a)) => Right(a)
-      case Right(Left(e))  => Left(e)
-      case Left(e)         => Left(e)
-    }
-  }
 }
 
 object MonadSyntax {
@@ -413,15 +370,6 @@ val manualListComprehension =
 
 // println(manualListComprehension)
 
-// using `for` comprehension, we get a nicely sugared form
-
-val listComprehension: List[(Int, Int)] = for {
-  n    <- List(0, 1, 2)
-  big  <- List(n * 10, n * 100)
-} yield (n, big)
-
-// println(listComprehension)
-
 // Effectively identitical to list comprehensions in Python
 // ```
 // list_comprehension = [ (n, big) 
@@ -431,21 +379,23 @@ val listComprehension: List[(Int, Int)] = for {
 // ```
 //
 
+// using `for` comprehension, we get a nicely sugared form
+
+val listComprehension: List[(Int, Int)] = for {
+  n    <- List(0, 1, 2)
+  big  <- List(n * 10, n * 100)
+} yield (n, big)
+
+// println(listComprehension)
+
+
 val bailsOutOnNone: Option[(Int, Int)]= for {
   // x <- Some(5)
-  x <- none[Int]
+  x <- (None: Option[Int])
   y <- Some(x + 6)
 } yield (x, y)
 
 // println(bailsOutOnNone)
-
-val bailsOutOnLeft: Either[String, (Int, Int)] = for {
-  // x <- Right(5)
-  x <- "error".left[Int]
-  y <- Right(x + 6)
-} yield (x, y)
-
-// println(bailsOutOnLeft)
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -559,36 +509,38 @@ object EvenMoreMonadInstances {
   }
 }
 
-val addDigits: Function1[Int, (Int, Int, Int)] = for {
-  addOne <- (_ + 1)
-  addTwo <- (_ + 2)
-  addThree <- (_ + 3)
-} yield (addOne, addTwo, addThree)
+// val addDigits: Function1[Int, (Int, Int, Int)] = for {
+//   addOne <- (_ + 1)
+//   addTwo <- (_ + 2)
+//   addThree <- (_ + 3)
+// } yield (addOne, addTwo, addThree)
 
-println(addDigits(0)) // (1, 2, 3)
+// println(addDigits(0)) // (1, 2, 3)
 
 
 ///////////////////////////////////////////////////////////////////////////////
 // OUR NORTHSTAR
 
-case class HttpRequest()
-case class HttpResponse()
+case class HttpRequest(method: String, body: Option[String], parameters: Map[String, String])
+case class HttpResponse(body: String)
 case class JwtToken()
 
-def POST(request: HttpRequest): Option[Unit]
-def extractBody(request: HttpRequest): Option[String]
-def extractHeader(name: String)(request: HttpRequest): Option[String]
+// def POST(request: HttpRequest): Option[Unit]
+// def extractBody(request: HttpRequest): Option[String]
+// def extractHeader(name: String)(request: HttpRequest): Option[String]
 
-def parseJWT(token: String): Option[JwtToken]
+// def parseJWT(token: String): Option[JwtToken]
 
-def handler: Function1[HttpRequest, Option[HttpResponse]] = for {
-  _ <- POST
-  body <- extractBody
-  header <- extractHeader("Authorisation")
-} yield HttpResponse()
+// def echoController: HttpRequest => Option[HttpResponse] = for {
+//   _ <- POST
+//   body <- extractBody
+//   header <- extractHeader("Authorisation").map(_.flatMap(parseJWT))
+// } yield HttpResponse(body)
 
 
-final case class Kleisli[F[_], A, B](run: A => F[B]) {
-  def compose[Z](k: Kleisli[F, Z, A])(implicit F: FlatMap[F]): Kleisli[F, Z, B] =
+// println(handler())
+
+final case class Kleisli[F[_]: Monad, A, B](run: A => F[B]) {
+  def compose[Z](k: Kleisli[F, Z, A]): Kleisli[F, Z, B] =
     Kleisli[F, Z, B](z => k.run(z).flatMap(run))
 } 
