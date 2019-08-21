@@ -559,7 +559,36 @@ object EvenMoreMonadInstances {
   }
 }
 
-// final case class Kleisli[F[_], A, B](run: A => F[B]) {
-//   def compose[Z](k: Kleisli[F, Z, A])(implicit F: FlatMap[F]): Kleisli[F, Z, B] =
-//     Kleisli[F, Z, B](z => k.run(z).flatMap(run))
-// }
+val addDigits: Function1[Int, (Int, Int, Int)] = for {
+  addOne <- (_ + 1)
+  addTwo <- (_ + 2)
+  addThree <- (_ + 3)
+} yield (addOne, addTwo, addThree)
+
+println(addDigits(0)) // (1, 2, 3)
+
+
+///////////////////////////////////////////////////////////////////////////////
+// OUR NORTHSTAR
+
+case class HttpRequest()
+case class HttpResponse()
+case class JwtToken()
+
+def POST(request: HttpRequest): Option[Unit]
+def extractBody(request: HttpRequest): Option[String]
+def extractHeader(name: String)(request: HttpRequest): Option[String]
+
+def parseJWT(token: String): Option[JwtToken]
+
+def handler: Function1[HttpRequest, Option[HttpResponse]] = for {
+  _ <- POST
+  body <- extractBody
+  header <- extractHeader("Authorisation")
+} yield HttpResponse()
+
+
+final case class Kleisli[F[_], A, B](run: A => F[B]) {
+  def compose[Z](k: Kleisli[F, Z, A])(implicit F: FlatMap[F]): Kleisli[F, Z, B] =
+    Kleisli[F, Z, B](z => k.run(z).flatMap(run))
+} 
