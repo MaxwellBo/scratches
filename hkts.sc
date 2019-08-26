@@ -1,4 +1,41 @@
 import $plugin.$ivy.`org.spire-math::kind-projector:0.9.3`
+// Things may appear in a weird order. I'm doing that so that you know every
+// thing you need to know before you get to it, so you don't see something
+// weird and think 'what the hell is that'
+
+///////////////////////////////////////////////////////////////////////////////
+// Polymorphism
+///////////////////////////////////////////////////////////////////////////////
+
+trait Animal {
+  def sound: String
+}
+case class Dog() extends Animal {
+  def sound: String = "woof"
+}
+
+case class Cat() extends Animal {
+  def sound: String = "meow"
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+def makeSound(animal: Animal) = {
+  println(animal.sound)
+}
+
+makeSound(Cat())
+makeSound(Dog())
+
+///////////////////////////////////////////////////////////////////////////////
+
+object ThirdPartyLibrary {
+  case class Rabbit()
+}
+
+import ThirdPartyLibrary.Rabbit
+
+// makeSound(Rabbit())
 
 ///////////////////////////////////////////////////////////////////////////////
 // Scala function calling semantic oddities
@@ -39,6 +76,30 @@ def implicitString()(implicit x: String) = x
 // println(implicitString()) // implicit String
 
 ///////////////////////////////////////////////////////////////////////////////
+// A sensible usecase for implicits
+///////////////////////////////////////////////////////////////////////////////
+
+case class TenantInfo(tenantId: String) // this is unique per request
+
+def dataAccessLayer()(implicit ctx: TenantInfo): Unit = {
+  println(s"Accessing DB for tenant ${ctx.tenantId}")
+}
+
+def serviceLayer()(implicit ctx: TenantInfo): Unit = {
+  println("Doing some business logic stuff")
+  dataAccessLayer()
+}
+
+def controller(): Unit = {
+  println("Doing some controller stuff to recover the `tenantId` from the request (maybe verifying a cookie)")
+  val r = scala.util.Random
+  implicit val tenantContext = TenantInfo(tenantId = r.nextString(8))
+  serviceLayer()
+}
+
+controller()
+
+///////////////////////////////////////////////////////////////////////////////
 
 implicit val implicitBoolean:   Boolean = true
 implicit val implicitInt:       Int     = 5
@@ -73,8 +134,8 @@ type Id[A] = A
 // scala> :k Id
 // Id's kind is F[+A]
 
-implicit val implicitListString:   List[String]   = List("hello")
-implicit val implicitListBoolean:     List[Boolean]  = List(true)
+implicit val implicitListString: List[String]   = List("hello")
+implicit val implicitListBoolean: List[Boolean]  = List(true)
 
 def hktAppImplicitly[F[_], A](implicit x: F[A]): F[A]  = {
   x
@@ -83,6 +144,7 @@ def hktAppImplicitly[F[_], A](implicit x: F[A]): F[A]  = {
 // println(hktAppImplicitly[List, String]) // List("hello")
 // println(hktAppImplicitly[List, Boolean]) // List(true)
 // println(hktAppImplicitly[Id, String]) // "implicit String"
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Implicit classes
@@ -99,16 +161,74 @@ import IntSyntax._
 // println(5.increment()) // 6
 
 ///////////////////////////////////////////////////////////////////////////////
+
+trait Sound[A] {
+  def sound(a: A): String
+}
+
+object SoundSyntax {
+  implicit class CanMakeSoundIdExtensions[A](private val self: A) extends AnyVal {
+    def sound_()(implicit instance: Sound[A]): String = {
+      instance.sound(self)}
+  }
+}
+
+object SoundInstances {
+ implicit val dogInstance: Sound[Dog] = new Sound[Dog] {
+   override def sound(a: Dog): String = "woof"
+ }
+
+  implicit val catInstance: Sound[Cat] = new Sound[Cat] {
+    override def sound(a: Cat): String = "meow"
+  }
+
+  implicit val rabbitInstance: Sound[Rabbit] = new Sound[Rabbit] {
+    override def sound(a: Rabbit): String = "what the fuck sound does a rabbit make lmao"
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// `Sound` consumption
+////////////////////////////////////////////////////////////////////////////////
+
+import SoundInstances._
+import SoundSyntax._
+
+def makeSoundImplicitParam[A](a: A)(implicit instance: Sound[A]): Unit = {
+  println(a.sound_())
+}
+
+makeSoundImplicitParam(Dog())
+makeSoundImplicitParam(Cat())
+makeSoundImplicitParam(Rabbit()) // this now works!
+
+def makeSoundGenericRequirement[A: Sound](a: A): Unit = {
+  // val instance = implicitly[Sound[A]] // we can still recover the instance
+  println(a.sound_())
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+case class HasNoSound()
+
+// makeSoundImplicitParam(HasNoSound())
+// hkts.sc:184: could not find implicit value for parameter instance: ammonite.$file.hkts.Sound[ammonite.$file.hkts.HasNoSound]
+// val res_38 = makeSoundImplicitParam(HasNoSound())
+
+// makeSoundGenericRequirement(HasNoSound())
+// hkts.sc:194: could not find implicit value for evidence parameter of type ammonite.$file.hkts.Sound[ammonite.$file.hkts.HasNoSound]
+// val res_39 = makeSoundGenericRequirement(HasNoSound())
+
+///////////////////////////////////////////////////////////////////////////////
 // What do we want the JSON encoding API to look like
 ///////////////////////////////////////////////////////////////////////////////
 
 // println(5.encode().value) // 5
 // println("hello".encode().value) // "hello"
-
-val me = Person(name="Max Bo", age=22, alive=true)
+//
+//val me = Person(name="Max Bo", age=22, alive=true)
 
 // println(me.encode().value) // { "name": "Max Bo", "age": 22, "alive": true }
-
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -118,7 +238,7 @@ val me = Person(name="Max Bo", age=22, alive=true)
 case class Json(value: String)
 
 trait Encode[A] {
-  def encode(x: A): Json
+  def encode(a: A): Json
 }
 
 object EncodeSyntax {
@@ -169,13 +289,13 @@ case class Person(name: String, age: Int, alive: Boolean)
 // Note the gap between `Person` and `Encode[Person`
 
 implicit def encodePerson: Encode[Person] = new Encode[Person] {
-    override def encode(person: Person): Json = 
-      // we can obviously do this in a macro
-      Map(
-        "name" -> person.name.encode(),
-        "age" -> person.age.encode(),
-        "alive" -> person.alive.encode()
-      ).encode()
+  def encode(person: Person): Json =
+    // we can obviously do this in a macro
+    Map(
+      "name" -> person.name.encode(),
+      "age" -> person.age.encode(),
+      "alive" -> person.alive.encode()
+    ).encode()
 }
 
 // println(me.encode().value) // { "name": "Max Bo", "age": 22, "alive": true }
@@ -188,12 +308,6 @@ implicit def encodePerson: Encode[Person] = new Encode[Person] {
 ////////////////////////////////////////////////////////////////////////////////
 // Declaring requirements of `Encode`
 ////////////////////////////////////////////////////////////////////////////////
-
-def needsAnEncoderImplicitEvidence[A](a: A)(implicit instance: Encode[A]) {
-  println(a.encode().value)
-}
-
-// sugars to
 
 def needsAnEncoderGenericRequirement[A: Encode](a: A) {
   // val instance = implicitly[Encode[A]] // we can still recover the instance
@@ -216,25 +330,56 @@ case class HasNoEncoder()
 // case class Some[+A](value: A) extends Option[A]
 // case object None extends Option[Nothing]
 
-case class FamilyMember(age: Int, parent: Option[FamilyMember])
-
-val grandad = FamilyMember(age=79, parent=None)
-val mum = FamilyMember(age=55, parent=Some(grandad))
-val son = FamilyMember(age=22, parent=Some(mum))
-
-val family: List[FamilyMember] = List(son, mum, grandad)
-
-def getAges(family: List[FamilyMember]): List[Int] = {
-  family.map(_.age)
+case class FamilyMember(
+  age: Int,
+  mother: Option[FamilyMember] = None,
+  father: Option[FamilyMember] = None
+) {
+  def parents: List[FamilyMember] = {
+    List(mother, father).collect { // nice way to filter out None's
+      case Some(member) => member
+    }
+  }
 }
 
-def getParentAge(member: FamilyMember): Option[Int] = {
-  val parent: Option[FamilyMember] = member.parent
-  parent.map(_.age)
+
+val grandma = FamilyMember(age=79);                                                 val grandad = FamilyMember(age=82)
+
+  val mum = FamilyMember(age=55, father=Some(grandma));     val dad = FamilyMember(age=56, mother=Some(grandad))
+
+                        val son = FamilyMember(age=22, mother=Some(mum), father=Some(dad))
+
+                        val family: List[FamilyMember] = List(grandma, grandad, mum, dad, son)
+
+def getParentsAges(familyMember: FamilyMember): List[Int] = {
+  val parents: List[FamilyMember] = familyMember.parents
+  parents.map(_.age)
 }
 
-// println(getParentAge(son)) // Some(55)
-// println(getAges(family)) // List(22, 55, 79)
+def getMothersAge(member: FamilyMember): Option[Int] = {
+  val mother: Option[FamilyMember] = member.mother
+  mother.map(_.age)
+}
+
+println(getParentsAges(son)) // List(55, 56)
+println(getParentsAges(grandma)) // List()
+println(getMothersAge(son)) // Some(55)
+println(getMothersAge(grandma)) // None
+
+////////////////////////////////////////////////////////////////////////////////
+
+def getAgeFromList(familyMembers: List[FamilyMember]): List[Int] = {
+  familyMembers.map(_.age)
+}
+
+def getAgeFromOption(member: Option[FamilyMember]): Option[Int] = {
+  member.map(_.age)
+}
+
+println(getAgeFromList(family)) // List(79, 82, 55, 56, 22)
+println(getAgeFromList(grandma.parents)) // List()
+println(getAgeFromOption(son.mother)) // Some(55)
+println(getAgeFromOption(grandma.mother)) // None
 
 // How do we make something like this? 🤔
 // def getAge[F[_]: ???](f: F[FamilyMember]): F[Int] = {
@@ -261,7 +406,7 @@ object FunctorInstances {
     // @ List(1, 2, 3).map(x => x + 1)
   // res0: List[Int] = List(2, 3, 4)
   implicit val listFunctorInstance: Functor[List] = new Functor[List] {
-    def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
+    def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f) // very scary reimplementation, let's not do that and use the stdlib
   }
 
   implicit val optionFunctorInstance: Functor[Option] = new Functor[Option] {
@@ -283,11 +428,8 @@ def getAge[F[_]: Functor](f: F[FamilyMember]): F[Int] = {
   f.map(_.age)
 }
 
-val familyAgain: List[FamilyMember] = List(son, mum, grandad)
-val optionParent: Option[FamilyMember] = son.parent
-
-// println(getAge(familyAgain)) // List(22, 55, 79)
-// println(getAge(optionParent)) // Some(55)
+// println(getAge(family)) // List(79, 82, 55, 56, 22)
+// println(getAge(son.mother)) // Some(55)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Why Functors might not be all we need
@@ -297,10 +439,40 @@ val optionParent: Option[FamilyMember] = son.parent
 // this type would get bigger and bigger as we traversed up the family tree
 // if only there was some way to flatten these down 🤔 
 def getGrandparentAge(member: FamilyMember): Option[Option[Int]] = {
-  member.parent.map(_.parent.map(_.age))
-  //           ^             ^ multiple successive Functor operations
-  //                           causes nesting
+  val grandmother: Option[Option[FamilyMember]] = member.mother.map(_.mother) // we're getting an Option from an Option
+  val grandmothersAge: Option[Option[Int]] = grandmother.map(_.map(_.age)) // so it becomes an Option OF an Option
+
+  grandmothersAge
 }
+
+def getAllAgesUpToGrandparents(member: FamilyMember): List[List[Int]] = {
+  val ancestors: List[List[FamilyMember]] = member.parents.map(_.parents)
+  val ancestorsAges: List[List[Int]] = ancestors.map(_.map(_.age))
+
+  ancestorsAges
+}
+
+
+def flattenList[A](xss: List[List[A]]): List[A] = {
+  xss.flatten
+}
+
+def flattenOption[A](ffa: Option[Option[A]]): Option[A] = {
+  ffa match {
+    case Some(Some(a)) => Some(a)
+    case _ => None
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+def getGrandparentAge_(member: FamilyMember): Option[Int] = {
+  val grandmother: Option[FamilyMember] = flattenOption(member.mother.map(_.mother))
+  val grandmothersAge: Option[Int] = grandmother.map(_.age)
+
+  grandmothersAge
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -348,6 +520,29 @@ object MonadInstances {
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Monad usage
+////////////////////////////////////////////////////////////////////////////////
+
+def getGrandparentAge_(member: FamilyMember): Option[Int] = {
+  member.mother.flatMap(_.mother).map(_.age)
+  //           ^             ^ multiple successive Monad operations
+  //                           causes _eliminates nesting
+}
+
+def getAllAgesUpToGrandparents_(member: FamilyMember): List[Int] = {
+  member.parents.flatMap(_.parents.map(_.age))
+}
+
+println(getGrandparentAge_(son)) // TODO
+println(getAllAgesUpToGrandparents_(son)) // TODO
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
 import FunctorInstances._
 import FunctorSyntax._
 import MonadInstances._
@@ -391,7 +586,7 @@ val bailsOutOnNone: Option[(Int, Int)]= for {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class IO[+A](val unsafeInterpret: () => A) 
+class IO[A](val unsafeInterpret: () => A)
 
 object IO {
   def effect[A](eff: => A) = new IO(() => eff)
@@ -531,3 +726,29 @@ case class JwtToken()
 //  def compose[Z](k: Kleisli[F, Z, A]): Kleisli[F, Z, B] =
 //    Kleisli[F, Z, B](z => k.run(z).flatMap(run))
 //}
+
+///////////////////////////////////////////////////////////////////////////////
+// "Mapped" types
+///////////////////////////////////////////////////////////////////////////////
+
+// https://www.typescriptlang.org/docs/handbook/advanced-types.html#mapped-types
+type Partial[T[_[_]]] = T[Option]
+type All[T[_[_]]] = T[Id]
+
+sealed trait CustomerShape[F[_]] {
+  def name: F[String]
+  def description: F[String]
+}
+
+final case class InsertCustomer(
+  name: String,
+  description: String
+) extends All[CustomerShape]
+
+final case class UpdateCustomer(
+  name: Option[String],
+  description: Option[String]
+) extends Partial[CustomerShape]
+
+///////////////////////////////////////////////////////////////////////////////
+
