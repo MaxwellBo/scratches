@@ -1,4 +1,3 @@
-
 import Data.Semigroup
 
 multiply :: [Int]
